@@ -6,6 +6,6 @@
   "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/ws", "/og.jpg", "/og-card", "/api/*"] },
   "durable_objects": { "bindings": [{ "name": "ROOM", "class_name": "Room" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
-  "browser": { "binding": "BROWSER" },
+  "services": [{ "binding": "SHOTS", "service": "og-render" }],
   "observability": { "enabled": true }
 }

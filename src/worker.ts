@@ -1,8 +1,7 @@
-import puppeteer from '@cloudflare/puppeteer'
 import { DurableObject } from 'cloudflare:workers'
 import { card } from './site'
 
-interface Env { ASSETS: Fetcher; ROOM: DurableObjectNamespace<Room>; BROWSER: Fetcher }
+interface Env { ASSETS: Fetcher; ROOM: DurableObjectNamespace<Room>; SHOTS: Fetcher }
 interface Stats { online: number; visits: number }
 
 const room = (env: Env) => env.ROOM.get(env.ROOM.idFromName('lobby'))
@@ -58,45 +57,17 @@ export class Room extends DurableObject<Env> {
   }
 }
 
-const TTL = 300
-
-// The share image is a screenshot of /og-card, a light HTML page stamped with live room numbers, taken by Browser Rendering and cached for five minutes. A long-lived copy of the last good render backs it for when a render fails.
-async function ogImage(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const url = new URL(req.url)
-  const cache = (caches as unknown as { default: Cache }).default
-  const bucket = Math.floor(Date.now() / 1000 / TTL)
-  const key = new Request(`${url.origin}/og.jpg?v=2&b=${bucket}`)
-  const hit = await cache.match(key)
-  if (hit) return hit
-  const stale = new Request(`${url.origin}/og.jpg?stale`)
-  try {
-    const s = await room(env).stats()
-    const cardUrl = `${url.origin}/og-card?online=${s.online}&visits=${s.visits}`
-    const browser = await puppeteer.launch(env.BROWSER)
-    let jpg: ArrayBuffer
-    try {
-      const page = await browser.newPage()
-      await page.setViewport({ width: 1200, height: 630 })
-      await page.goto(cardUrl, { waitUntil: 'networkidle0', timeout: 25000 })
-      jpg = (await page.screenshot({ type: "jpeg", quality: 88 })) as unknown as ArrayBuffer
-    } finally {
-      await browser.close()
-    }
-    const res = new Response(jpg, { headers: { 'content-type': 'image/jpeg', 'cache-control': `public, max-age=${TTL}` } })
-    ctx.waitUntil(Promise.all([
-      cache.put(key, res.clone()),
-      cache.put(stale, new Response(jpg, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=604800' } })),
-    ]))
-    return res
-  } catch (e) {
-    const last = await cache.match(stale)
-    if (last) return last
-    return new Response(`og render failed: ${e}`, { status: 502 })
-  }
+// The share image is a screenshot of /og-card, a light HTML page stamped with live room numbers. The fleet's og-render service takes it and caches the result for five minutes under a key of its own, so the stamped numbers never fragment the cache.
+async function ogImage(req: Request, env: Env): Promise<Response> {
+  const origin = new URL(req.url).origin
+  const s = await room(env).stats()
+  const target = `${origin}/og-card?online=${s.online}&visits=${s.visits}`
+  const res = await env.SHOTS.fetch(`https://og-render/render?${new URLSearchParams({ url: target, key: `${new URL(origin).host}/og`, w: '1200', h: '630', ttl: '300' })}`)
+  return new Response(res.body, { status: res.status, headers: res.ok ? { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=300' } : {} })
 }
 
 export default {
-  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url)
     switch (url.pathname) {
       case '/ws':
@@ -105,7 +76,7 @@ export default {
       case '/api/stats':
         return Response.json(await room(env).stats(), { headers: { 'cache-control': 'no-store', 'access-control-allow-origin': '*' } })
       case '/og.jpg':
-        return ogImage(req, env, ctx)
+        return ogImage(req, env)
       case '/og-card': {
         const n = (k: string) => Math.max(0, Math.min(1e9, parseInt(url.searchParams.get(k) ?? '0') || 0))
         return new Response(card({ online: n('online'), visits: n('visits'), origin: url.origin }), { headers: { 'content-type': 'text/html;charset=utf-8' } })

@@ -7,7 +7,6 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@cloudflare/puppeteer": "^1.4.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
     "@react-three/postprocessing": "^3.1.3",
