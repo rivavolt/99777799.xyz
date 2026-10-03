@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>99777799 — read me backwards</title>
+<meta name="description" content="A palindrome you can draw in.">
+<style>
+  :root{--g:#ffd36b;--m:#ff3df0;--c:#3df0ff}
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%;background:#07051a;color:#fff;font-family:ui-serif,Georgia,serif;overflow:hidden}
+  #hero{position:fixed;inset:0;background:url(hero.jpg) center/cover;filter:saturate(1.2) brightness(.55);animation:drift 40s ease-in-out infinite alternate}
+  @keyframes drift{from{transform:scale(1.05) translateX(-1%)}to{transform:scale(1.15) translateX(1%)}}
+  canvas{position:fixed;inset:0;width:100%;height:100%;mix-blend-mode:screen;cursor:crosshair}
+  .axis{position:fixed;left:50%;top:0;bottom:0;width:1px;background:linear-gradient(transparent,var(--g),transparent);opacity:.5;pointer-events:none}
+  h1{position:fixed;top:7vh;left:0;right:0;text-align:center;font-weight:400;letter-spacing:.35em;font-size:clamp(2rem,9vw,8rem);pointer-events:none;
+     background:linear-gradient(90deg,var(--c),#fff 48%,#fff 52%,var(--m));-webkit-background-clip:text;background-clip:text;color:transparent;
+     text-shadow:0 0 60px #ff3df055;padding-left:.35em}
+  h1 span{display:inline-block;animation:bob 6s ease-in-out infinite}
+  h1 span:nth-child(1),h1 span:nth-child(8){animation-delay:0s}
+  h1 span:nth-child(2),h1 span:nth-child(7){animation-delay:.4s}
+  h1 span:nth-child(3),h1 span:nth-child(6){animation-delay:.8s}
+  h1 span:nth-child(4),h1 span:nth-child(5){animation-delay:1.2s}
+  @keyframes bob{50%{transform:translateY(-.12em)}}
+  .note{position:fixed;bottom:5vh;left:0;right:0;text-align:center;font-style:italic;opacity:.8;letter-spacing:.08em;pointer-events:none;font-size:clamp(.9rem,2vw,1.2rem)}
+  .note b{font-style:normal;color:var(--g);font-weight:400}
+  .note u{text-decoration:none;display:inline-block;transition:opacity 2s}
+  button{position:fixed;bottom:2vh;left:50%;transform:translateX(-50%);background:#0008;border:1px solid #ffd36b88;color:var(--g);padding:.4em 1.2em;border-radius:99px;font:inherit;font-size:.85rem;letter-spacing:.2em;cursor:pointer}
+  button:hover{background:#ffd36b22}
+</style>
+</head>
+<body>
+<div id="hero"></div>
+<canvas id="c"></canvas>
+<div class="axis"></div>
+<h1 aria-label="99777799"><span>9</span><span>9</span><span>7</span><span>7</span><span>7</span><span>7</span><span>9</span><span>9</span></h1>
+<p class="note">draw anywhere — the <b>other side</b> remembers <u id="rev"></u></p>
+<button id="clr">clear the water</button>
+<script>
+const cv=document.getElementById('c'),x=cv.getContext('2d');
+let W,H,dpr=Math.min(devicePixelRatio||1,2);
+function size(){W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}
+size();addEventListener('resize',size);
+let hue=180,last=null,down=false,t=0;
+function seg(a,b,w){
+  x.lineCap='round';x.lineWidth=w;
+  x.strokeStyle=`hsl(${hue},100%,65%)`;x.shadowColor=`hsl(${hue},100%,60%)`;x.shadowBlur=18;
+  // original, horizontal mirror, vertical reflection pool, and both
+  for(const [fx,fy] of [[1,1],[-1,1],[1,-1],[-1,-1]]){
+    x.beginPath();
+    x.moveTo(W/2+fx*(a.x-W/2),H/2+fy*(a.y-H/2));
+    x.lineTo(W/2+fx*(b.x-W/2),H/2+fy*(b.y-H/2));
+    x.stroke();
+  }
+}
+function pt(e){return{x:e.clientX,y:e.clientY}}
+cv.addEventListener('pointerdown',e=>{down=true;last=pt(e);cv.setPointerCapture(e.pointerId)});
+addEventListener('pointerup',()=>{down=false;last=null});
+cv.addEventListener('pointermove',e=>{
+  const p=pt(e);
+  if(last&&down){const d=Math.hypot(p.x-last.x,p.y-last.y);hue=(hue+d*.4)%360;seg(last,p,2+Math.min(d,30)/6)}
+  last=down?p:null;
+});
+// fade slowly so the canvas never fills up
+setInterval(()=>{x.save();x.globalCompositeOperation='destination-out';x.fillStyle='rgba(0,0,0,.035)';x.fillRect(0,0,W,H);x.restore()},120);
+document.getElementById('clr').onclick=()=>x.clearRect(0,0,W,H);
+// a ghost draws a Lissajous palindrome until you touch the page
+let ghost=true,gp=null;
+addEventListener('pointerdown',()=>ghost=false,{once:true});
+(function loop(){
+  if(ghost){t+=.02;
+    const p={x:W/2+Math.sin(t*3)*W*.28*Math.cos(t*.7),y:H/2+Math.sin(t*2+1)*H*.3};
+    if(gp){hue=(hue+1.2)%360;seg(gp,p,2.5)}
+    gp=p;
+  }
+  requestAnimationFrame(loop);
+})();
+// the page reads itself backwards
+const s='99777799';document.getElementById('rev').textContent='“'+[...s].reverse().join('')+'”';
+</script>
+</body>
+</html>
