@@ -8,6 +8,7 @@ import gsap from 'gsap'
 import * as THREE from 'three'
 import font from './font.json'
 
+const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 const DIGITS = '99777799'.split('')
 const SPACING = 1.45
 const pulse = { v: 0 }
@@ -20,6 +21,8 @@ function tint(i) {
 
 function Digit({ ch, i }) {
   const ref = useRef()
+  const { size } = useThree()
+  const portrait = size.width < size.height * 0.9
   const side = i < 4 ? -1 : 1
   const color = useMemo(() => tint(i), [i])
   useFrame(({ clock }) => {
@@ -29,7 +32,7 @@ function Digit({ ch, i }) {
   })
   return (
     <Float speed={2} floatIntensity={0.6} rotationIntensity={0}>
-      <group position={[(i - 3.5) * SPACING, 0.2, 0]}>
+      <group position={portrait ? [((i % 4) - 1.5) * SPACING, i < 4 ? 1.7 : 0.1, 0] : [(i - 3.5) * SPACING, 0.2, 0]}>
         <group ref={ref}>
           <Center>
             <Text3D font={font} size={1.1} height={0.45} bevelEnabled bevelSize={0.03} bevelThickness={0.05} curveSegments={8}>
@@ -86,7 +89,7 @@ function Floor() {
   return (
     <mesh rotation-x={-Math.PI / 2} position={[0, -1.1, 0]}>
       <planeGeometry args={[140, 140]} />
-      <MeshReflectorMaterial blur={[300, 80]} resolution={1024} mixBlur={1} mixStrength={60} mirror={1} depthScale={0.8}
+      <MeshReflectorMaterial blur={[300, 80]} resolution={COARSE ? 512 : 1024} mixBlur={1} mixStrength={60} mirror={1} depthScale={0.8}
         minDepthThreshold={0.4} maxDepthThreshold={1.4} color="#0b0824" metalness={0.8} roughness={0.9} />
     </mesh>
   )
@@ -133,14 +136,15 @@ function Orb({ id, hue }) {
   const a = useRef(), b = useRef()
   const cur = useRef({ x: 0, y: 0, k: 0 })
   const color = useMemo(() => new THREE.Color().setHSL(hue / 360, 1, 0.62), [hue])
-  useFrame(({ clock }, dt) => {
+  useFrame(({ clock, camera, size }, dt) => {
     const p = id === 'me' ? net.me : net.peers.get(id)
     if (!p || !a.current) return
     const c = cur.current, f = Math.min(1, dt * 12)
     c.x += (p.x - c.x) * f
     c.y += (p.y - c.y) * f
     c.k += ((id === 'me' || p.seen ? 1 : 0) - c.k) * Math.min(1, dt * 6)
-    const x = c.x * 7, y = 0.3 + (c.y * 0.5 + 0.5) * 4.2, bob = Math.sin(clock.elapsedTime * 3 + x) * 0.05
+    const hw = Math.tan((camera.fov * Math.PI) / 360) * (size.width / size.height) * Math.max(3, camera.position.length() - 2.5) * 0.9
+    const x = c.x * Math.min(7, hw), y = 0.3 + (c.y * 0.5 + 0.5) * 4.2, bob = Math.sin(clock.elapsedTime * 3 + x) * 0.05
     a.current.position.set(x, y + bob, 2.5)
     b.current.position.set(-x, y + bob, 2.5)
     a.current.scale.setScalar(c.k)
@@ -160,6 +164,17 @@ function Presence({ people }) {
   return people.map((p) => <Orb key={p.id} id={p.id} hue={p.hue} />)
 }
 
+// Pull the camera back until the whole palindrome fits the screen width, whatever the aspect ratio.
+function Fit() {
+  const { camera, size } = useThree()
+  useEffect(() => {
+    const aspect = size.width / size.height
+    const need = aspect < 0.9 ? 4.2 : 7.4
+    camera.position.setLength(Math.max(9.5, Math.min(34, need / (Math.tan((camera.fov * Math.PI) / 360) * aspect))))
+  }, [camera, size.width, size.height])
+  return null
+}
+
 function Scene({ people }) {
   return (
     <>
@@ -172,7 +187,8 @@ function Scene({ people }) {
       <Floor />
       <MirrorDust />
       <Presence people={people} />
-      <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.6} minPolarAngle={1.1} maxPolarAngle={1.65}
+      <Fit />
+      <OrbitControls enablePan={false} enableZoom={false} enableRotate={!COARSE} autoRotate autoRotateSpeed={0.6} minPolarAngle={1.1} maxPolarAngle={1.65}
         minAzimuthAngle={-0.9} maxAzimuthAngle={0.9} enableDamping />
       <EffectComposer>
         <Bloom intensity={1.3} luminanceThreshold={0.25} mipmapBlur />
@@ -196,7 +212,7 @@ export default function App() {
   const online = net.connected ? people.length : 1
   return (
     <>
-      <Canvas camera={{ position: [0, 1.2, 9.5], fov: 50 }} dpr={[1, 2]} onPointerDown={() => { hit(); net.click() }} gl={{ antialias: true }}>
+      <Canvas camera={{ position: [0, 1.2, 9.5], fov: 50 }} dpr={[1, COARSE ? 1.5 : 2]} onPointerDown={() => { hit(); net.click() }} gl={{ antialias: true }}>
         <Scene people={people} />
       </Canvas>
       <motion.div className="ui" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 2.5, delay: 0.8 }}>
@@ -209,7 +225,7 @@ export default function App() {
           </AnimatePresence>
           <span>{online} {online === 1 ? 'walker' : 'walkers'} in the mirror{net.connected ? '' : ' · offline'}</span>
         </div>
-        <p>move to wander · click to flip the mirror for everyone · <span>99777799</span> reads the same backwards</p>
+        <p>{COARSE ? 'drag to wander · tap to flip the mirror for everyone' : 'move to wander · click to flip the mirror for everyone'} · <span>99777799</span> reads the same backwards</p>
       </motion.div>
     </>
   )
