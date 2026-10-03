@@ -1,8 +1,9 @@
-import { Suspense, useMemo, useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Text3D, Center, OrbitControls, MeshReflectorMaterial, Float, useTexture } from '@react-three/drei'
 import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { net, connect } from './net'
 import gsap from 'gsap'
 import * as THREE from 'three'
 import font from './font.json'
@@ -117,7 +118,49 @@ function MirrorDust() {
   )
 }
 
-function Scene() {
+// Every visitor is an orb hovering over the floor, and every orb has a twin on the other side of the axis — your own included.
+function Glow({ color, opacity = 1 }) {
+  return (
+    <>
+      <mesh><sphereGeometry args={[0.13, 20, 14]} /><meshBasicMaterial color={color} toneMapped={false} transparent opacity={opacity} /></mesh>
+      <mesh><sphereGeometry args={[0.3, 20, 14]} /><meshBasicMaterial color={color} toneMapped={false} transparent opacity={0.16 * opacity} depthWrite={false} blending={THREE.AdditiveBlending} /></mesh>
+      <pointLight color={color} intensity={5 * opacity} distance={4.5} />
+    </>
+  )
+}
+
+function Orb({ id, hue }) {
+  const a = useRef(), b = useRef()
+  const cur = useRef({ x: 0, y: 0, k: 0 })
+  const color = useMemo(() => new THREE.Color().setHSL(hue / 360, 1, 0.62), [hue])
+  useFrame(({ clock }, dt) => {
+    const p = id === 'me' ? net.me : net.peers.get(id)
+    if (!p || !a.current) return
+    const c = cur.current, f = Math.min(1, dt * 12)
+    c.x += (p.x - c.x) * f
+    c.y += (p.y - c.y) * f
+    c.k += ((id === 'me' || p.seen ? 1 : 0) - c.k) * Math.min(1, dt * 6)
+    const x = c.x * 7, y = 0.3 + (c.y * 0.5 + 0.5) * 4.2, bob = Math.sin(clock.elapsedTime * 3 + x) * 0.05
+    a.current.position.set(x, y + bob, 2.5)
+    b.current.position.set(-x, y + bob, 2.5)
+    a.current.scale.setScalar(c.k)
+    b.current.scale.setScalar(c.k)
+  })
+  return (
+    <>
+      <group ref={a}><Glow color={color} /></group>
+      <group ref={b}><Glow color={color} opacity={0.7} /></group>
+    </>
+  )
+}
+
+function Presence({ people }) {
+  const { pointer } = useThree()
+  useFrame(() => net.move(pointer.x, pointer.y))
+  return people.map((p) => <Orb key={p.id} id={p.id} hue={p.hue} />)
+}
+
+function Scene({ people }) {
   return (
     <>
       <color attach="background" args={['#07051a']} />
@@ -128,6 +171,7 @@ function Scene() {
       <Rings />
       <Floor />
       <MirrorDust />
+      <Presence people={people} />
       <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.6} minPolarAngle={1.1} maxPolarAngle={1.65}
         minAzimuthAngle={-0.9} maxAzimuthAngle={0.9} enableDamping />
       <EffectComposer>
@@ -141,15 +185,31 @@ function Scene() {
 
 
 export default function App() {
+  const [, bump] = useState(0)
+  const people = [{ id: 'me', hue: net.me.hue }, ...[...net.peers].map(([id, p]) => ({ id, hue: p.hue }))]
   const hit = () => { gsap.fromTo(pulse, { v: 0 }, { v: 1, duration: 1.6, ease: 'power3.inOut' }) }
+  useEffect(() => {
+    net.onChange = () => bump((n) => n + 1)
+    net.onClick = hit
+    return connect()
+  }, [])
+  const online = net.connected ? people.length : 1
   return (
     <>
-      <Canvas camera={{ position: [0, 1.2, 9.5], fov: 50 }} dpr={[1, 2]} onPointerDown={hit} gl={{ antialias: true }}>
-        <Scene />
+      <Canvas camera={{ position: [0, 1.2, 9.5], fov: 50 }} dpr={[1, 2]} onPointerDown={() => { hit(); net.click() }} gl={{ antialias: true }}>
+        <Scene people={people} />
       </Canvas>
       <motion.div className="ui" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 2.5, delay: 0.8 }}>
         <h1>9 9 7 7 <b>|</b> 7 7 9 9</h1>
-        <p>drag to walk around the mirror · click to flip it · <span>99777799</span> reads the same backwards</p>
+        <div className="presence">
+          <AnimatePresence>
+            {people.map((p) => (
+              <motion.i key={p.id} initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} style={{ background: `hsl(${p.hue} 100% 62%)`, boxShadow: `0 0 12px hsl(${p.hue} 100% 62%)` }} />
+            ))}
+          </AnimatePresence>
+          <span>{online} {online === 1 ? 'walker' : 'walkers'} in the mirror{net.connected ? '' : ' · offline'}</span>
+        </div>
+        <p>move to wander · click to flip the mirror for everyone · <span>99777799</span> reads the same backwards</p>
       </motion.div>
     </>
   )

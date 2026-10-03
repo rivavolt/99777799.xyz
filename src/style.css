@@ -1,7 +1,10 @@
 :root{--g:#ffd36b;--m:#ff3df0;--c:#3df0ff}
 body{font-family:ui-serif,Georgia,serif;color:#fff}
-.ui{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;align-items:center;padding:5vh 0 4vh}
+.ui{position:fixed;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:flex-start;align-items:center;padding:5vh 0 4vh;gap:1.2em}
 .ui h1{font-weight:400;letter-spacing:.5em;padding-left:.5em;font-size:clamp(.8rem,2vw,1.3rem);margin:0;opacity:.8}
 .ui h1 b{font-weight:400;color:var(--g)}
-.ui p{margin:0;font-style:italic;letter-spacing:.1em;opacity:.7;font-size:clamp(.8rem,1.8vw,1.1rem);text-align:center}
+.ui p{margin:auto 0 0;font-style:italic;letter-spacing:.1em;opacity:.7;font-size:clamp(.8rem,1.8vw,1.1rem);text-align:center}
 .ui p span{color:var(--c);font-style:normal;letter-spacing:.3em}
+.presence{display:flex;align-items:center;gap:.5em;flex-wrap:wrap;justify-content:center;max-width:80vw;opacity:.9}
+.presence i{width:11px;height:11px;border-radius:50%;display:block}
+.presence span{margin-left:.6em;letter-spacing:.2em;font-size:.8rem;text-transform:uppercase;opacity:.8}
